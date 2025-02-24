@@ -1,12 +1,6 @@
 import pandas as pd
-from pathlib import Path
 import ast
 import json
-
-# Define the paths
-current_dir = Path(__file__).parent
-input_csv = current_dir / "manufacturers_checked3.csv"
-output_excel = current_dir / "manufacturers.xlsx"
 
 
 def safe_eval(x):
@@ -21,10 +15,7 @@ def safe_eval(x):
             return [x] if x else []
 
 
-def csv_to_excel():
-    # Read the CSV file
-    df = pd.read_csv(input_csv)
-
+def csv_to_excel(df, output_excel):
     # Convert string representations of lists to actual lists
     list_columns = ["emails", "digifabster_urls", "3yourmind_urls", "amfg_urls"]
     for col in list_columns:
@@ -60,7 +51,3 @@ def csv_to_excel():
             worksheet.set_column(i, i, column_len + 2)
 
     print(f"Excel file has been created: {output_excel}")
-
-
-if __name__ == "__main__":
-    csv_to_excel()

@@ -3,8 +3,6 @@ import xmltodict
 import pandas
 from bs4 import BeautifulSoup
 
-evomi_proxy = ""
-
 
 def get_info_from_element(element):
     if element:
@@ -19,17 +17,17 @@ def get_info_from_element(element):
     return ""
 
 
-def get_websites():
+def get_websites(MAX_RETRIES, proxy=""):
     url = "https://www.3d.directory/sitemap/manufacturers"
-    resp = hrequests.get(url, proxy=evomi_proxy)
+    resp = hrequests.get(url, proxy=proxy)
     sitemap = xmltodict.parse(resp.text)
     urls = [url["loc"] for url in sitemap["urlset"]["url"]]
     manufacturers = []
 
     for url in urls:
-        for i in range(10):
+        for i in range(MAX_RETRIES):
             try:
-                resp = hrequests.get(url, proxy=evomi_proxy)
+                resp = hrequests.get(url, proxy=proxy)
                 html = BeautifulSoup(resp.text, "html.parser")
 
                 name = html.select_one("h1.company-profile-heading").text.strip()
@@ -66,8 +64,4 @@ def get_websites():
                 print(e)
                 continue
 
-    csv = pandas.DataFrame(manufacturers)
-    csv.to_csv("manufacturers.csv", index=False)
-
-
-get_websites()
+    return pandas.DataFrame(manufacturers)

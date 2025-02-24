@@ -1,17 +1,10 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
-from pathlib import Path
 import pandas as pd
 import hrequests
 import time
 import json
 import re
-
-csv_path = Path(__file__).parent.parent / "manufacturers_checked2.csv"
-save_path = Path(__file__).parent.parent / "manufacturers_checked3.csv"
-
-NUM_THREADS = 1
-MAX_RETRIES = 3
 
 
 def get_domain(url):
@@ -31,7 +24,7 @@ def remove_duplicates(items):
     return list(dict.fromkeys(items))
 
 
-def process_urls(urls, page):
+def process_urls(urls, page, MAX_RETRIES):
     digifabster_urls = []
     threeyourmind_urls = []
     amfg_urls = []
@@ -61,11 +54,11 @@ def process_urls(urls, page):
 
 
 def process_website(row):
-    index, url, page = row
+    index, url, MAX_RETRIES = row
 
     print(f"Checking main url: {url}")
 
-    # page = hrequests.BrowserSession(window=(1024, 768), headless=False)
+    page = hrequests.BrowserSession(window=(1024, 768), headless=False)
 
     for i in range(MAX_RETRIES):
         try:
@@ -94,7 +87,7 @@ def process_website(row):
             found_emails = extract_emails(page.text)
 
             digifabster_urls, threeyourmind_urls, amfg_urls = process_urls(
-                found_urls, page
+                found_urls, page, MAX_RETRIES
             )
 
             return index, found_emails, digifabster_urls, threeyourmind_urls, amfg_urls
@@ -104,13 +97,11 @@ def process_website(row):
             time.sleep(1)
             continue
 
-    # page.close()
+    page.close()
     return index, [], [], [], []
 
 
-def main():
-    df = pd.read_csv(csv_path)
-
+def check_manufacturers(df, evomi_proxy, NUM_THREADS, MAX_RETRIES):
     if "emails" not in df.columns:
         df["emails"] = None
 
@@ -128,17 +119,11 @@ def main():
     df["3yourmind_urls"] = df["3yourmind_urls"].astype("object")
     df["amfg_urls"] = df["amfg_urls"].astype("object")
 
-    page = hrequests.BrowserSession(window=(1024, 768), headless=False)
-
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         future_to_index = {
-            executor.submit(process_website, (index, row["url"], page)): index
+            executor.submit(process_website, (index, row["url"], MAX_RETRIES)): index
             for index, row in df.iterrows()
             if not pd.isna(row["url"])
-            and (pd.isna(row["emails"]) or row["emails"] == "[]")
-            and (pd.isna(row["digifabster_urls"]) or row["digifabster_urls"] == "[]")
-            and (pd.isna(row["3yourmind_urls"]) or row["3yourmind_urls"] == "[]")
-            and (pd.isna(row["amfg_urls"]) or row["amfg_urls"] == "[]")
         }
 
         for future in as_completed(future_to_index):
@@ -146,23 +131,24 @@ def main():
                 future.result()
             )
 
-            df.at[index, "emails"] = json.dumps(remove_duplicates(found_emails))
-            df.at[index, "amfg_urls"] = json.dumps(remove_duplicates(amfg_urls))
+            if found_emails:
+                df.at[index, "emails"] = json.dumps(remove_duplicates(found_emails))
 
-            df.at[index, "digifabster_urls"] = json.dumps(
-                remove_duplicates(digifabster_urls)
-            )
+            if amfg_urls:
+                df.at[index, "amfg_urls"] = json.dumps(remove_duplicates(amfg_urls))
 
-            df.at[index, "3yourmind_urls"] = json.dumps(
-                remove_duplicates(threeyourmind_urls)
-            )
+            if digifabster_urls:
+                df.at[index, "digifabster_urls"] = json.dumps(
+                    remove_duplicates(digifabster_urls)
+                )
+
+            if threeyourmind_urls:
+                df.at[index, "3yourmind_urls"] = json.dumps(
+                    remove_duplicates(threeyourmind_urls)
+                )
 
             print(
                 f"{remove_duplicates(found_emails)}\n{remove_duplicates(amfg_urls)}\n{remove_duplicates(digifabster_urls)}\n{remove_duplicates(threeyourmind_urls)}\n\n"
             )
 
-    df.to_csv(save_path, index=False)
-
-
-if __name__ == "__main__":
-    main()
+    return df
